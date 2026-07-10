@@ -78,6 +78,12 @@
   <canvas id="chart" width="320" height="120"></canvas>
   <div id="chartStatus"></div>
 
+  <div id="analyzeSection" style="display:flex; flex-direction:column; align-items:center; gap:8px; max-width:320px;">
+    <input type="file" id="chartFile" accept="image/*" style="color:#aaa; font-size:11px;">
+    <button id="analyzeBtn" style="width:180px; height:44px; font-size:14px; background:#60a5fa;">ANALYZE CHART</button>
+    <div id="analyzeResult" style="font-size:12px; color:#ccc; white-space:pre-wrap; text-align:left;"></div>
+  </div>
+
 <script>
   // -----------------------------------------------------------------
   // Fill these in after your backend is deployed on Render:
@@ -87,6 +93,7 @@
 
   const HEALTH_URL = BACKEND_URL.replace(/\/trade$/, "/health");
   const PRICES_URL = BACKEND_URL.replace(/\/trade$/, "/prices");
+  const ANALYZE_URL = BACKEND_URL.replace(/\/trade$/, "/analyze");
   const PING_INTERVAL_MS = 8 * 60 * 1000; // 8 min -- safely under Render's 15-min sleep threshold
   const PRICE_POLL_MS = 3 * 1000; // 3 sec -- feels live without hammering the server
 
@@ -240,6 +247,49 @@
 
   buyBtn.addEventListener("click", () => trigger("buy"));
   sellBtn.addEventListener("click", () => trigger("sell"));
+
+  const chartFile = document.getElementById("chartFile");
+  const analyzeBtn = document.getElementById("analyzeBtn");
+  const analyzeResult = document.getElementById("analyzeResult");
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  analyzeBtn.addEventListener("click", async () => {
+    const file = chartFile.files[0];
+    if (!file) {
+      analyzeResult.textContent = "Pick a chart screenshot first.";
+      return;
+    }
+
+    analyzeBtn.disabled = true;
+    analyzeResult.textContent = "Reading chart...";
+
+    try {
+      const base64 = await fileToBase64(file);
+      const resp = await fetch(ANALYZE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: base64,
+          mediaType: file.type || "image/png",
+          secret: TRIGGER_SECRET,
+        }),
+      });
+      const data = await resp.json();
+      analyzeResult.textContent = resp.ok ? data.analysis : `Error: ${data.error}`;
+    } catch (err) {
+      analyzeResult.textContent = `Network error: ${err.message}`;
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
 </script>
 
 </body>
