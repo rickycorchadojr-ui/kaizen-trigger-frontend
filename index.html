@@ -218,6 +218,13 @@
 
       if (!resp.ok) {
         status.textContent = `Error: ${data.error || "unknown error"}`;
+      } else if (data.flattened) {
+        // Backend detected this tap closed an existing position and
+        // flattened it cleanly via Position/closeContract -- no new
+        // bracket order was placed, so there's no stopTicks/targetTicks
+        // to show here.
+        status.textContent =
+          `Position closed on ${data.contract} (flattened, no new orders placed).`;
       } else {
         status.textContent =
           `${side.toUpperCase()} placed on ${data.contract}. ` +
