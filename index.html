@@ -68,13 +68,59 @@
 <script>
   // -----------------------------------------------------------------
   // Fill these in after your backend is deployed on Render:
-  const BACKEND_URL = "https://kaizen-trigger.onrender.com/trade";
-  const TRIGGER_SECRET = "pinecone-42";
+  const BACKEND_URL = "https://your-render-service.onrender.com/trade";
+  const TRIGGER_SECRET = "your-trigger-secret-here";
   // -----------------------------------------------------------------
+
+  const HEALTH_URL = BACKEND_URL.replace(/\/trade$/, "/health");
+  const PING_INTERVAL_MS = 8 * 60 * 1000; // 8 min -- safely under Render's 15-min sleep threshold
 
   const buyBtn = document.getElementById("buy");
   const sellBtn = document.getElementById("sell");
   const status = document.getElementById("status");
+
+  // ---------------------------------------------------------------
+  // Usage-driven keep-alive: instead of a scheduled ping running all
+  // day whether you're here or not, THIS PAGE pings the backend every
+  // few minutes for as long as it's open in an active tab. Close the
+  // tab, switch tabs, or just don't open the page today, and zero
+  // pings happen -- Render is free to let it sleep and you spend zero
+  // instance-hours on days you're not trading.
+  // ---------------------------------------------------------------
+  let pingTimer = null;
+
+  async function pingHealth() {
+    try {
+      await fetch(HEALTH_URL);
+    } catch (err) {
+      // Silent by design -- a failed background ping isn't worth
+      // interrupting you with. If the backend is actually down,
+      // you'll find out the moment you tap Buy or Sell.
+    }
+  }
+
+  function startPinging() {
+    if (pingTimer) return; // already running
+    pingHealth(); // ping immediately so the page also wakes it on open
+    pingTimer = setInterval(pingHealth, PING_INTERVAL_MS);
+  }
+
+  function stopPinging() {
+    if (pingTimer) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
+  }
+
+  // Only ping while this tab is the one you're actually looking at.
+  // Leaving it open in the background all day (without looking at it)
+  // shouldn't quietly cost instance-hours either.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") startPinging();
+    else stopPinging();
+  });
+
+  if (document.visibilityState === "visible") startPinging();
 
   async function trigger(side) {
     buyBtn.disabled = true;
