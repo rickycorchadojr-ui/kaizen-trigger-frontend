@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trigger</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: #0d0d0d;
+    font-family: "Courier New", monospace;
+    color: #eee;
+  }
+  h1 {
+    letter-spacing: 2px;
+    font-size: 14px;
+    color: #888;
+    text-transform: uppercase;
+  }
+  .buttons {
+    display: flex;
+    gap: 20px;
+  }
+  button {
+    width: 140px;
+    height: 90px;
+    font-size: 20px;
+    font-weight: bold;
+    font-family: inherit;
+    letter-spacing: 1px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #0d0d0d;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  #buy { background: #4ade80; }
+  #sell { background: #f87171; }
+  #status {
+    min-height: 20px;
+    font-size: 13px;
+    color: #aaa;
+    text-align: center;
+    max-width: 320px;
+  }
+</style>
+</head>
+<body>
+
+  <h1>MNQ Trigger</h1>
+
+  <div class="buttons">
+    <button id="buy">BUY</button>
+    <button id="sell">SELL</button>
+  </div>
+
+  <div id="status"></div>
+
+<script>
+  // -----------------------------------------------------------------
+  // Fill these in after your backend is deployed on Render:
+  const BACKEND_URL = "https://your-render-service.onrender.com/trade";
+  const TRIGGER_SECRET = "your-trigger-secret-here";
+  // -----------------------------------------------------------------
+
+  const buyBtn = document.getElementById("buy");
+  const sellBtn = document.getElementById("sell");
+  const status = document.getElementById("status");
+
+  async function trigger(side) {
+    buyBtn.disabled = true;
+    sellBtn.disabled = true;
+    status.textContent = `Placing ${side.toUpperCase()}...`;
+
+    try {
+      const resp = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ side, secret: TRIGGER_SECRET }),
+      });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        status.textContent = `Error: ${data.error || "unknown error"}`;
+      } else {
+        status.textContent =
+          `${side.toUpperCase()} placed on ${data.contract}. ` +
+          `orderId=${data.orderId} (stop ${data.stopTicks}t / target ${data.targetTicks}t)`;
+      }
+    } catch (err) {
+      status.textContent = `Network error: ${err.message}`;
+    } finally {
+      buyBtn.disabled = false;
+      sellBtn.disabled = false;
+    }
+  }
+
+  buyBtn.addEventListener("click", () => trigger("buy"));
+  sellBtn.addEventListener("click", () => trigger("sell"));
+</script>
+
+</body>
+</html>
