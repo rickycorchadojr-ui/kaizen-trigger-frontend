@@ -52,6 +52,16 @@
     text-align: center;
     max-width: 320px;
   }
+  #chart {
+    background: #161616;
+    border: 1px solid #333;
+    border-radius: 6px;
+  }
+  #chartStatus {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -65,6 +75,9 @@
 
   <div id="status"></div>
 
+  <canvas id="chart" width="320" height="120"></canvas>
+  <div id="chartStatus"></div>
+
 <script>
   // -----------------------------------------------------------------
   // Fill these in after your backend is deployed on Render:
@@ -73,11 +86,16 @@
   // -----------------------------------------------------------------
 
   const HEALTH_URL = BACKEND_URL.replace(/\/trade$/, "/health");
+  const PRICES_URL = BACKEND_URL.replace(/\/trade$/, "/prices");
   const PING_INTERVAL_MS = 8 * 60 * 1000; // 8 min -- safely under Render's 15-min sleep threshold
+  const PRICE_POLL_MS = 3 * 1000; // 3 sec -- feels live without hammering the server
 
   const buyBtn = document.getElementById("buy");
   const sellBtn = document.getElementById("sell");
   const status = document.getElementById("status");
+  const chartStatus = document.getElementById("chartStatus");
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
 
   // ---------------------------------------------------------------
   // Usage-driven keep-alive: instead of a scheduled ping running all
@@ -112,15 +130,78 @@
     }
   }
 
-  // Only ping while this tab is the one you're actually looking at.
+  // ---------------------------------------------------------------
+  // Live chart: polls the backend's rolling price buffer every few
+  // seconds and redraws a simple line. Same on/off-tab behavior as
+  // the keep-alive ping -- only runs while you're actually looking.
+  // ---------------------------------------------------------------
+  let priceTimer = null;
+
+  function drawChart(prices) {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!prices || prices.length < 2) return;
+
+    const values = prices.map((p) => p.price);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+
+    ctx.beginPath();
+    prices.forEach((p, i) => {
+      const x = (i / (prices.length - 1)) * (w - 10) + 5;
+      const y = h - 10 - ((p.price - min) / range) * (h - 20);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#4ade80";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    chartStatus.textContent = `MNQ ${values[values.length - 1].toFixed(2)}`;
+  }
+
+  async function pollPrices() {
+    try {
+      const resp = await fetch(PRICES_URL);
+      const data = await resp.json();
+      if (resp.ok && data.prices) drawChart(data.prices);
+    } catch (err) {
+      // Silent -- the chart just won't update this tick. Buy/Sell are
+      // unaffected either way since they don't depend on this feed.
+    }
+  }
+
+  function startPricePolling() {
+    if (priceTimer) return;
+    pollPrices();
+    priceTimer = setInterval(pollPrices, PRICE_POLL_MS);
+  }
+
+  function stopPricePolling() {
+    if (priceTimer) {
+      clearInterval(priceTimer);
+      priceTimer = null;
+    }
+  }
+
+  // Only ping/poll while this tab is the one you're actually looking at.
   // Leaving it open in the background all day (without looking at it)
   // shouldn't quietly cost instance-hours either.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") startPinging();
-    else stopPinging();
+    if (document.visibilityState === "visible") {
+      startPinging();
+      startPricePolling();
+    } else {
+      stopPinging();
+      stopPricePolling();
+    }
   });
 
-  if (document.visibilityState === "visible") startPinging();
+  if (document.visibilityState === "visible") {
+    startPinging();
+    startPricePolling();
+  }
 
   async function trigger(side) {
     buyBtn.disabled = true;
